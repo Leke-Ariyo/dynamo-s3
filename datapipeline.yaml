@@ -1,0 +1,284 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: 'A CloudFormation template which copy dynamodb to s3'
+
+Parameters:
+  BucketName: { Type: String, Default: "my-unique-bucket-interview-demo-123" }
+  HashKeyElementName:
+    Type: String
+    Default: EmployeeId
+    Description: Hash Key Name
+  HashKeyElementType:
+    Type: String
+    Default: S
+    Description: Hash Key Type
+
+Resources:
+  DataPipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - elasticmapreduce.amazonaws.com
+                - datapipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Description: Role to provide aws data pipeline
+      Policies:
+        - PolicyName: MyDataPipelineRolePolicy1
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:AuthorizeSecurityGroupEgress
+                  - ec2:AuthorizeSecurityGroupIngress
+                  - ec2:CancelSpotInstanceRequests
+                  - ec2:CreateNetworkInterface
+                  - ec2:CreateSecurityGroup
+                  - ec2:CreateTags
+                  - ec2:DeleteNetworkInterface
+                  - ec2:DeleteSecurityGroup
+                  - ec2:DeleteTags
+                  - ec2:DescribeAvailabilityZones
+                  - ec2:DescribeAccountAttributes
+                  - ec2:DescribeDhcpOptions
+                  - ec2:DescribeImages
+                  - ec2:DescribeInstanceStatus
+                  - ec2:DescribeInstances
+                  - ec2:DescribeKeyPairs
+                  - ec2:DescribeLaunchTemplates
+                  - ec2:DescribeNetworkAcls
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DescribePrefixLists
+                  - ec2:DescribeRouteTables
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeSpotInstanceRequests
+                  - ec2:DescribeSpotPriceHistory
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeTags
+                  - ec2:DescribeVpcAttribute
+                  - ec2:DescribeVpcEndpoints
+                  - ec2:DescribeVpcEndpointServices
+                  - ec2:DescribeVpcs
+                  - ec2:DetachNetworkInterface
+                  - ec2:ModifyImageAttribute
+                  - ec2:ModifyInstanceAttribute
+                  - ec2:RequestSpotInstances
+                  - ec2:RevokeSecurityGroupEgress
+                  - ec2:RunInstances
+                  - ec2:TerminateInstances
+                  - ec2:DescribeVolumeStatus
+                  - ec2:DescribeVolumes
+                  - elasticmapreduce:TerminateJobFlows
+                  - elasticmapreduce:ListSteps
+                  - elasticmapreduce:ListClusters
+                  - elasticmapreduce:RunJobFlow
+                  - elasticmapreduce:DescribeCluster
+                  - elasticmapreduce:AddTags
+                  - elasticmapreduce:RemoveTags
+                  - elasticmapreduce:ListInstanceGroups
+                  - elasticmapreduce:ModifyInstanceGroups
+                  - elasticmapreduce:*
+                  - elasticmapreduce:DescribeStep
+                  - elasticmapreduce:AddJobFlowSteps
+                  - elasticmapreduce:ListInstances
+                  - iam:ListInstanceProfiles
+                  - redshift:DescribeClusters
+                Resource:
+                  - "*"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/IAMFullAccess
+        - arn:aws:iam::aws:policy/AWSDataPipeline_PowerUser
+        - arn:aws:iam::aws:policy/AWSDataPipeline_FullAccess
+      RoleName: MyDataPipelineRole1
+  DataPipelineResourceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Description: Role to provide aws data pipeline
+      Policies:
+        - PolicyName: MyDataPipelineResourceRolePolicy1
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:*
+                  - datapipeline:*
+                  - dynamodb:*
+                  - ec2:Describe*
+                  - elasticmapreduce:AddJobFlowSteps
+                  - elasticmapreduce:Describe*
+                  - elasticmapreduce:ListInstance*
+                  - elasticmapreduce:ModifyInstanceGroups
+                  - rds:Describe*
+                  - redshift:DescribeClusters
+                  - redshift:DescribeClusterSecurityGroups
+                  - s3:*
+                  - sdb:*
+                  - sns:*
+                  - iam:ListRolePolicies
+                  - iam:GetRolePolicy
+                  - sqs:*
+                Resource:
+                  - "*"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/IAMFullAccess
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforDataPipelineRole
+      RoleName: MyDataPipelineRoleResource1
+  MainBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Ref BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  EmployeeTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Employee
+      AttributeDefinitions:
+        -
+          AttributeName: !Ref HashKeyElementName
+          AttributeType: !Ref HashKeyElementType
+      KeySchema:
+        -
+          AttributeName: !Ref HashKeyElementName
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+  DynamoDBInputS3OutputHive:
+    Type: AWS::DataPipeline::Pipeline
+    DependsOn: ["DataPipelineRole","DataPipelineResourceRole","MainBucket","EmployeeTable"]
+    Properties:
+      Name: DynamoDBInputS3OutputHive
+      Description: Pipeline to backup DynamoDB data to S3
+      Activate: 'true'
+      ParameterObjects:
+      - Id: "myDDBReadThroughputRatio"
+        Attributes:
+          - Key: "description"
+            StringValue: "DynamoDB read throughput ratio"
+          - Key: "type"
+            StringValue: "Double"
+          - Key: "default"
+            StringValue: "0.2"
+      - Id: "myOutputS3Loc"
+        Attributes:
+          - Key: "description"
+            StringValue: "S3 output bucket"
+          - Key: "type"
+            StringValue: "AWS::S3::ObjectKey"
+          - Key: "default"
+            StringValue: "s3://my-unique-bucket-interview-demo-123/"
+      - Id: "myDDBTableName"
+        Attributes:
+          - Key: "description"
+            StringValue: "DynamoDB Table Name "
+          - Key: "type"
+            StringValue: "String"
+      - Id: "myDDBRegion"
+        Attributes:
+          - Key: "description"
+            StringValue: "DynamoDB Table Region"
+          - Key: "type"
+            StringValue: "String"
+          - Key: "default"
+            StringValue: "us-east-1"
+      ParameterValues:
+      - Id: "myDDBTableName"
+        StringValue: "Employee"
+      PipelineObjects:
+      - Id: "S3BackupLocation"
+        Name: "Copy data to this S3 location"
+        Fields:
+          - Key: "type"
+            StringValue: "S3DataNode"
+          - Key: "dataFormat"
+            RefValue: "DDBExportFormat"
+          - Key: "directoryPath"
+            StringValue: "#{myOutputS3Loc}/#{format(@scheduledStartTime, 'YYYY-MM-dd-HH-mm-ss')}"
+      - Id: "DDBSourceTable"
+        Name: "DDBSourceTable"
+        Fields:
+          - Key: "tableName"
+            StringValue: "#{myDDBTableName}"
+          - Key: "type"
+            StringValue: "DynamoDBDataNode"
+          - Key: "dataFormat"
+            RefValue: "DDBExportFormat"
+          - Key: "readThroughputPercent"
+            StringValue: "#{myDDBReadThroughputRatio}"
+      - Id: "DDBExportFormat"
+        Name: "DDBExportFormat"
+        Fields:
+          - Key: "type"
+            StringValue: "DynamoDBExportDataFormat"
+      - Id: "TableBackupActivity"
+        Name: "TableBackupActivity"
+        Fields:
+          - Key: "resizeClusterBeforeRunning"
+            StringValue: "true"
+          - Key: "type"
+            StringValue: "HiveCopyActivity"
+          - Key: "input"
+            RefValue: "DDBSourceTable"
+          - Key: "runsOn"
+            RefValue: "EmrClusterForBackup"
+          - Key: "output"
+            RefValue: "S3BackupLocation"
+      - Id: "DefaultSchedule"
+        Name: "RunOnce"
+        Fields:
+          - Key: "occurrences"
+            StringValue: "1"
+          - Key: "startDateTime"
+            StringValue: "2023-11-21T02:00:00"
+          - Key: "type"
+            StringValue: "Schedule"
+          - Key: "period"
+            StringValue: "1 Day"
+      - Id: "Default"
+        Name: "Default"
+        Fields:
+          - Key: "type"
+            StringValue: "Default"
+          - Key: "scheduleType"
+            StringValue: "cron"
+          - Key: "failureAndRerunMode"
+            StringValue: "CASCADE"
+          - Key: "role"
+            StringValue: "MyDataPipelineRole1"
+          - Key: "resourceRole"
+            StringValue: "MyDataPipelineRoleResource1"
+          - Key: "schedule"
+            RefValue: "DefaultSchedule"
+      - Id: "EmrClusterForBackup"
+        Name: "EmrClusterForBackup"
+        Fields:
+          - Key: "terminateAfter"
+            StringValue: "2 Hours"
+          - Key: "amiVersion"
+            StringValue: "3.3.2"
+          - Key: "masterInstanceType"
+            StringValue: "m1.medium"
+          - Key: "coreInstanceType"
+            StringValue: "m1.medium"
+          - Key: "coreInstanceCount"
+            StringValue: "1"
+          - Key: "type"
+            StringValue: "EmrCluster"
